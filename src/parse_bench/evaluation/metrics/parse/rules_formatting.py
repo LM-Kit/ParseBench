@@ -878,13 +878,15 @@ def _normalize_latex_formula(formula: str) -> str:
     body = re.sub(r"\\(?:display|text|script|scriptscript)style\b", "", body)
     # Delimiter sizing is presentation, same policy as ``\left``/``\right`` above.
     body = re.sub(r"\\[Bb]igg?[lrm]?(?=\s|[()\[\]{}|\\.]|$)", "", body)
-    # A trailing ``(1)`` is an equation number ONLY when the source separated it from the
-    # expression -- ``\quad``/``\qquad``/``\hfill`` or plain whitespace, which is how a page
-    # prints one. Without that separator it is a function argument, and stripping it would
-    # make ``y = f(1)`` compare equal to ``y = f(2)`` and credit a wrong argument. This must
-    # run BEFORE the spacing strip and whitespace collapse below, which erase the evidence.
+    # A trailing ``(1)`` is an equation number ONLY when explicit LaTeX spacing
+    # separates it from the expression. Plain whitespace does not identify one:
+    # ``\log (100)`` is a function argument that authors space freely, so treating
+    # a space as the marker both equates ``\log (100)`` with ``\log (10)`` and
+    # splits ``\log (100)`` from ``\log(100)``. Without an explicit separator the
+    # group stays part of the expression. Runs BEFORE the spacing strip and the
+    # whitespace collapse below, which would erase the evidence.
     body = re.sub(
-        r"(?:\\(?:quad|qquad|hfill|hspace\*?\{[^{}]*\})|\s)\s*\((\d{1,3}[a-z]?)\)\s*$",
+        r"\\(?:quad|qquad|hfill|hspace\*?\{[^{}]*\})\s*\((\d{1,3}[a-z]?)\)\s*$",
         "",
         body,
     )

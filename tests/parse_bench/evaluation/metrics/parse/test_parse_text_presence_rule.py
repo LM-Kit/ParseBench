@@ -1836,10 +1836,43 @@ def test_is_latex_rule_strips_a_separated_equation_number_only() -> None:
     separated = LatexRule({"type": "is_latex", "formula": r"y = f(x) \quad (1)"})
     assert separated.run(r"$y = f(x)$")[0]
 
-    # ... and plain whitespace counts as that separator.
+    # ... but plain whitespace does NOT count as that separator: authors space
+    # function arguments freely, so a space cannot distinguish `f (2)` the
+    # argument from `\quad (2)` the equation number.
     spaced = LatexRule({"type": "is_latex", "formula": r"y = f(x) (2)"})
-    assert spaced.run(r"$y = f(x)$")[0]
+    assert not spaced.run(r"$y = f(x)$")[0]
 
     # ... while an unseparated group is an argument and must still match exactly.
     argument = LatexRule({"type": "is_latex", "formula": r"y = f(3)"})
     assert argument.run(r"$y = f(3)$")[0]
+
+
+def test_is_latex_rule_keeps_whitespace_separated_function_arguments() -> None:
+    # Plain whitespace does not identify an equation number: authors space a
+    # function argument freely, so `\log (100)` and `\log (10)` are different
+    # expressions and must not be equated by stripping the trailing group.
+    rule = LatexRule({"type": "is_latex", "formula": r"y = \log (100)"})
+
+    passed, _ = rule.run(r"$y = \log (10)$")
+
+    assert not passed
+
+
+def test_is_latex_rule_matches_spaced_and_unspaced_function_arguments() -> None:
+    # The same argument written with and without a space is the same formula;
+    # stripping one side's group would split them.
+    rule = LatexRule({"type": "is_latex", "formula": r"y = \log (100)"})
+
+    passed, _ = rule.run(r"$y = \log(100)$")
+
+    assert passed
+
+
+def test_is_latex_rule_still_strips_an_explicitly_spaced_equation_number() -> None:
+    # Explicit LaTeX spacing is what marks an equation number on a page.
+    for spacing in (r"\quad", r"\qquad", r"\hfill", r"\hspace{1em}"):
+        rule = LatexRule({"type": "is_latex", "formula": rf"x = y {spacing} (1)"})
+
+        passed, _ = rule.run(r"$x = y$")
+
+        assert passed, spacing
