@@ -42,3 +42,32 @@ def test_direction_and_relation_still_distinguish(expected, actual):
 def test_command_named_to_is_not_rewritten_inside_another_command():
     # \top must not become \rightarrowp via a careless \to substitution.
     assert LatexRule({"type": "is_latex", "formula": r"x^\top y"}).run(r"$x^\top y$")[0]
+
+
+@pytest.mark.parametrize(
+    ("expected", "actual"),
+    [
+        # The rewrite must fire before a digit or `_` too, or a spaced `\to 0`
+        # would normalize while an unspaced `\to0` would not, and the two would
+        # stop comparing equal — a regression against main, which normalized
+        # neither.
+        (r"\lim_{x\to0} f(x)", r"\lim_{x \to 0} f(x)"),
+        (r"\lim_{x \to 0} f(x)", r"\lim_{x\to0} f(x)"),
+        (r"\lim_{n\to\infty} a_n", r"\lim_{n \rightarrow \infty} a_n"),
+        (r"f: A\to B", r"f: A \rightarrow B"),
+    ],
+)
+def test_arrow_rewrite_fires_before_digits_and_underscores(expected, actual):
+    assert LatexRule({"type": "is_latex", "formula": expected}).run("$" + actual + "$")[0]
+
+
+@pytest.mark.parametrize(
+    "formula",
+    [
+        # Commands that merely start with "to" keep their own meaning.
+        r"x^\top y",
+        r"A^\top B^\top",
+    ],
+)
+def test_commands_beginning_with_to_are_untouched(formula):
+    assert LatexRule({"type": "is_latex", "formula": formula}).run("$" + formula + "$")[0]

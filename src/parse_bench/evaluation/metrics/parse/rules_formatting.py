@@ -927,13 +927,18 @@ def _normalize_latex_formula(formula: str) -> str:
     # Single arrows stay single and double arrows stay double: ``\Longrightarrow``
     # is the long form of ``\Rightarrow`` (implication), NOT of ``\rightarrow``,
     # so the capital prefix has to survive the fold.
-    body = re.sub(r"\\long(right|left|leftright)arrow\b", r"\\\1arrow", body)
+    # ``\b`` would not fire before a digit or ``_`` -- ``\to0`` in ``\lim_{x\to0}``
+    # is a word boundary only when the next character is non-word -- so a
+    # spaced ``\to 0`` would normalize and an unspaced ``\to0`` would not, and
+    # the two would stop comparing equal. Match on "not followed by a letter"
+    # instead, which still keeps ``\top`` and ``\toprule`` intact.
+    body = re.sub(r"\\long(right|left|leftright)arrow(?![A-Za-z])", r"\\\1arrow", body)
     body = re.sub(
-        r"\\Long(right|left|leftright)arrow\b",
+        r"\\Long(right|left|leftright)arrow(?![A-Za-z])",
         lambda m: "\\" + m.group(1).capitalize() + "arrow",
         body,
     )
-    body = re.sub(r"\\to\b", r"\\rightarrow", body)
+    body = re.sub(r"\\to(?![A-Za-z])", r"\\rightarrow", body)
     body = re.sub(r"\\text\s*\{([^{}]*)\}", r"\1", body)
     body = re.sub(r"\\(?:display|text|script|scriptscript)style\b", "", body)
     body = re.sub(r"\\(?:quad|qquad|,|;|:|!|>|enspace|hspace\*?\{[^{}]*\})", "", body)
