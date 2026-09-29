@@ -325,7 +325,7 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             provider_name="docai",
             product_type=ProductType.PARSE,
             config={"parse_options": {"redact": False}},
-            per_file_timeout=1800.0,
+            per_file_timeout=3600.0,  # includes the wait in the service's queue at --max_concurrent 30
         )
     )
 

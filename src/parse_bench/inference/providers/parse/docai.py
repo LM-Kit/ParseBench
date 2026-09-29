@@ -17,7 +17,7 @@ knowledge_base : str
 parse_options : dict
     Sent with the upload. Default ``{"redact": false}``.
 poll_seconds, request_timeout, job_timeout : float
-    Seconds. Defaults 5, 120 and 1800.
+    Seconds. Defaults 5, 120 and 3600.
 credit_rate_usd : float
     USD per credit. Falls back to ``DOCAI_CREDIT_RATE_USD``, else the pay-as-you-go rate, 0.01.
 
@@ -26,9 +26,9 @@ single attempts: connection errors and timeouts raise ``ProviderTransientError``
 retries. A retried document reuses its own upload (running or finished) instead of paying for a
 second parse. Uploads are named by a hash of the example id, so the service never sees it.
 
-Recommended ``--max_concurrent``: **8**, twice the service's four parse workers, so each
-worker has the next page queued when it finishes one. Extra uploads wait server-side inside
-``job_timeout``.
+Recommended ``--max_concurrent``: **30**. The service parses four pages at a time; the rest
+wait in its queue, so each worker always has the next page ready. ``job_timeout`` covers the
+wait in that queue as well as the parse.
 """
 
 from __future__ import annotations
@@ -254,7 +254,7 @@ class DocAIProvider(Provider):
         self._options = dict(self.base_config.get("parse_options") or {"redact": False})
         self._poll = float(self.base_config.get("poll_seconds", 5))
         self._request_timeout = float(self.base_config.get("request_timeout", 120))
-        self._job_timeout = float(self.base_config.get("job_timeout", 1800))
+        self._job_timeout = float(self.base_config.get("job_timeout", 3600))
         self._credit_rate = float(
             self.base_config.get("credit_rate_usd") or os.getenv("DOCAI_CREDIT_RATE_USD") or _CREDIT_RATE_USD
         )
