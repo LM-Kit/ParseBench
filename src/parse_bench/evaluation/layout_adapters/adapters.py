@@ -2172,8 +2172,9 @@ class DocAILayoutAdapter(LandingAILayoutAdapter):
 
 @register_layout_adapter("lmkit", priority=90)
 class LMKitLayoutAdapter(LandingAILayoutAdapter):
-    """Adapter for LM-Kit ParseOutput.layout_pages: one normalized [0,1] xywh box per parsed
-    element with a canonical label string, the same shape the LandingAI adapter reads."""
+    """Adapter for LM-Kit ParseOutput.layout_pages: one normalized [0,1] xywh box per grounding
+    region with a canonical label string, the same shape the LandingAI adapter reads. A picture
+    keeps the words it prints as its text, as the Docling and Chunkr adapters keep them."""
 
     @classmethod
     def matches(cls, inference_result: InferenceResult) -> bool:
@@ -2184,7 +2185,22 @@ class LMKitLayoutAdapter(LandingAILayoutAdapter):
 
     def to_layout_output(self, inference_result: InferenceResult, *, page_filter: int | None = None) -> LayoutOutput:
         out = super().to_layout_output(inference_result, page_filter=page_filter)
-        return out.model_copy(update={"model": LayoutDetectionModel.LMKIT_LAYOUT})
+        if not isinstance(inference_result.output, ParseOutput):
+            return out.model_copy(update={"model": LayoutDetectionModel.LMKIT_LAYOUT})
+        values = [
+            item.value
+            for lp in inference_result.output.layout_pages
+            if page_filter is None or lp.page_number == page_filter
+            for item in lp.items
+            for _ in item.layout_segments
+        ]
+        predictions = [
+            prediction.model_copy(update={"content": LayoutTextContent(text=value)})
+            if prediction.content is None and value and prediction.label.strip().lower() == "picture"
+            else prediction
+            for prediction, value in zip(out.predictions, values, strict=True)
+        ]
+        return out.model_copy(update={"model": LayoutDetectionModel.LMKIT_LAYOUT, "predictions": predictions})
 
 
 @register_layout_adapter("extend_parse", priority=89)

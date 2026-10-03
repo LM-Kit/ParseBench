@@ -159,6 +159,64 @@ def test_boxes_are_normalized_and_values_follow_the_content():
     assert by_label["Text"].value == "CONFIDENTIAL", "a layout-only element carries its own words"
 
 
+def _row_page() -> dict:
+    """A label and its value read as two elements that the parser joined into one region, beside a
+    paragraph standing alone, every region with the box the parser gave it."""
+    return {
+        "page_index": 0,
+        "page_number": 1,
+        "width": 600,
+        "height": 800,
+        "elements": [
+            {
+                "category": "text",
+                "reading_index": 0,
+                "confidence": 1,
+                "bbox": [60, 100, 160, 110],
+                "content": {"type": "text", "format": "markdown", "text": "Net sales:"},
+            },
+            {
+                "category": "text",
+                "reading_index": 1,
+                "confidence": 0.9,
+                "bbox": [300, 100, 400, 110],
+                "content": {"type": "text", "format": "markdown", "text": "EUR 4.3 billion"},
+            },
+            {
+                "category": "text",
+                "reading_index": 2,
+                "confidence": 1,
+                "bbox": [60, 140, 540, 170],
+                "content": {"type": "text", "format": "markdown", "text": "A paragraph."},
+            },
+        ],
+        "regions": [
+            {"category": "text", "bbox": [60, 98, 400, 112], "members": [0, 1], "text": "Net sales: EUR 4.3 billion"},
+            {"category": "text", "bbox": [60, 138, 540, 172], "members": [2]},
+        ],
+    }
+
+
+def test_each_grounding_region_is_one_box_over_its_members():
+    page = project_page(_row_page(), "md", ["Net sales:", "EUR 4.3 billion", "A paragraph."])
+
+    assert [item.value for item in page.items] == ["Net sales:\nEUR 4.3 billion", "A paragraph."]
+    assert [item.bbox.label for item in page.items] == ["Text", "Text"]
+    joined = page.items[0].bbox
+    assert (joined.x, joined.y, joined.w, joined.h) == pytest.approx((0.1, 98 / 800, 340 / 600, 14 / 800))
+    assert joined.confidence == pytest.approx(0.9)
+
+
+def test_without_regions_every_element_is_its_own_box():
+    page = _row_page()
+    del page["regions"]
+
+    items = project_page(page, "md", ["Net sales:", "EUR 4.3 billion", "A paragraph."]).items
+
+    assert len(items) == 3
+    assert (items[0].bbox.y, items[0].bbox.h) == pytest.approx((100 / 800, 10 / 800))
+
+
 def test_misaligned_renderings_are_refused():
     with pytest.raises(ValueError):
         project_page(_PAGE, "md", _ELEMENT_MARKDOWN[:-1])
@@ -260,6 +318,8 @@ def test_the_layout_adapter_reads_one_prediction_per_box(tmp_path):
     layout = LMKitLayoutAdapter().to_layout_output(result)
     assert layout.model == LayoutDetectionModel.LMKIT_LAYOUT
     assert len(layout.predictions) == 7
+    picture = next(p for p in layout.predictions if p.label == "Picture")
+    assert picture.content is not None and picture.content.text == "2024 Sales", "a picture keeps the words it prints"
 
 
 @pytest.mark.parametrize("effort", ["low", "medium", "high"])

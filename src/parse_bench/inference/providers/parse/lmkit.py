@@ -16,7 +16,9 @@ Each document is one ``POST /lmkit/v1/document-parsing`` with ``output_format: J
 category, box and typed content) and the Markdown of the same parse for the document, each page
 and each element. A long document may answer ``202`` with a job id, which is polled.
 
-Layout: one box per element, labelled by its category; nothing else is emitted.
+Layout: one box per grounding region (``regions`` in the response: an element, or the elements
+the parser joined into one unit, such as a label and its value on one row), labelled by its
+category; nothing else is emitted.
 
 Config keys
 -----------
@@ -120,9 +122,26 @@ def _join_renderings(elements: list[dict[str, Any]], renderings: list[str], cate
     )
 
 
+def _regions(page: dict[str, Any], count: int) -> list[tuple[list[int], list[float] | None]]:
+    """The page's grounding regions: each region the parser formed, its element indices and the box
+    it occupies, then every element in no region on its own, boxed by its bounds."""
+    regions: list[tuple[list[int], list[float] | None]] = []
+    taken: set[int] = set()
+    for region in page.get("regions") or []:
+        members = [m for m in region.get("members") or [] if isinstance(m, int) and 0 <= m < count and m not in taken]
+        if members:
+            taken.update(members)
+            bbox = region.get("bbox")
+            regions.append((members, [float(v) for v in bbox] if isinstance(bbox, list) and len(bbox) == 4 else None))
+    regions.extend(([index], None) for index in range(count) if index not in taken)
+    return regions
+
+
 def project_page(page: dict[str, Any], page_markdown: str, element_markdown: list[str]) -> ParseLayoutPageIR:
-    """One layout page: every element as one item, in reading order with running heads first and
-    running feet last, its box normalized by the page frame."""
+    """One layout page: one item per grounding region (one element, or the elements the parser
+    joined into one region), in reading order with running heads first and running feet last, its
+    box (the region's own when the parser gives one, else its elements' bounds) normalized by the
+    page frame."""
     elements = page.get("elements") or []
     if len(element_markdown) != len(elements):
         raise ValueError("element_markdown is not aligned with the page's elements")
@@ -134,31 +153,41 @@ def project_page(page: dict[str, Any], page_markdown: str, element_markdown: lis
         category = elements[index].get("category")
         return 0 if category == "header" else 2 if category == "footer" else 1
 
+    regions = [
+        ([m for m in members if len(elements[m].get("bbox") or []) == 4], bbox)
+        for members, bbox in _regions(page, len(elements))
+    ]
+    regions = [(members, bbox) for members, bbox in regions if members]
+    regions.sort(key=lambda region: min((order(i), i) for i in region[0]))
+
     items: list[LayoutItemIR] = []
-    for index in sorted(range(len(elements)), key=lambda i: (order(i), i)):
-        element = elements[index]
-        bbox = element.get("bbox") or []
-        if len(bbox) != 4:
-            continue
-        left, top, right, bottom = (float(v) for v in bbox)
+    for members, bbox in regions:
+        boxes = [bbox] if bbox else [[float(v) for v in elements[m]["bbox"]] for m in members]
+        left, top = min(b[0] for b in boxes), min(b[1] for b in boxes)
+        right, bottom = max(b[2] for b in boxes), max(b[3] for b in boxes)
+        if len(members) == 1:
+            element = elements[members[0]]
+            label = LABEL_MAP.get(element.get("category") or "", "Text")
+            confidence = float(element.get("confidence", 1.0))
+            item_type = _item_type(element)
+            value = _item_value(element, element_markdown[members[0]])
+        else:
+            titles = all(elements[m].get("category") == "title" for m in members)
+            label = LABEL_MAP["title"] if titles else LABEL_MAP["text"]
+            confidence = min(float(elements[m].get("confidence", 1.0)) for m in members)
+            item_type = "text"
+            value = "\n".join(element_markdown[m] for m in sorted(members) if element_markdown[m])
         segment = LayoutSegmentIR(
             x=_clamp01(left / width),
             y=_clamp01(top / height),
             w=_clamp01((right - left) / width),
             h=_clamp01((bottom - top) / height),
-            label=LABEL_MAP.get(element.get("category") or "", "Text"),
-            confidence=float(element.get("confidence", 1.0)),
+            label=label,
+            confidence=confidence,
         )
         if segment.w <= 0 or segment.h <= 0:
             continue
-        items.append(
-            LayoutItemIR(
-                type=_item_type(element),
-                value=_item_value(element, element_markdown[index]),
-                bbox=segment,
-                layout_segments=[segment],
-            )
-        )
+        items.append(LayoutItemIR(type=item_type, value=value, bbox=segment, layout_segments=[segment]))
 
     return ParseLayoutPageIR(
         page_number=int(page.get("page_number") or int(page.get("page_index", 0)) + 1),
