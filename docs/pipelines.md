@@ -362,6 +362,23 @@ Fine-tune of florin-parser-nano ([cloudraker/rakedoc-nano](https://huggingface.c
 |---|---|---|
 | `rakedoc_nano` | vLLM OpenAI-compatible endpoint (layout + per-region recognition) | `RAKEDOC_NANO_ENDPOINT_URL` |
 
+### LM-Kit
+
+Self-hosted document parser served by LM-Kit One ([lm-kit.com](https://lm-kit.com)). Start the public image on a machine with an NVIDIA GPU, then run a pipeline; the server downloads its model on the first request (2.3 GB, once) and needs no key or license:
+
+```bash
+docker run -d --name lmkit --gpus all --network host -e Security__NetworkAccess=LocalOnly lmkitone/lm-kit-one:2026.10.4
+uv run parse-bench run lmkit_high --max_concurrent 4
+```
+
+Each document is one `POST /lmkit/v1/document-parsing` (JSON with `include_markdown`); layout is one box per parsed element. Recommended `--max_concurrent 4`, the number of documents the server decodes together.
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `lmkit_high` | LM-Kit document parser, High effort | `LMKIT_ONE_URL` (optional, default `http://localhost:5189`) |
+| `lmkit_medium` | LM-Kit document parser, Medium effort | `LMKIT_ONE_URL` (optional) |
+| `lmkit_low` | LM-Kit document parser, Low effort | `LMKIT_ONE_URL` (optional) |
+
 ---
 
 ## Local Pipelines (No API key needed)

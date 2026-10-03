@@ -2170,6 +2170,23 @@ class DocAILayoutAdapter(LandingAILayoutAdapter):
         return out.model_copy(update={"model": LayoutDetectionModel.DOCAI_LAYOUT})
 
 
+@register_layout_adapter("lmkit", priority=90)
+class LMKitLayoutAdapter(LandingAILayoutAdapter):
+    """Adapter for LM-Kit ParseOutput.layout_pages: one normalized [0,1] xywh box per parsed
+    element with a canonical label string, the same shape the LandingAI adapter reads."""
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        if not isinstance(inference_result.output, ParseOutput) or not inference_result.output.layout_pages:
+            return False
+        raw_output = inference_result.raw_output
+        return isinstance(raw_output, dict) and raw_output.get("provider") == "lmkit"
+
+    def to_layout_output(self, inference_result: InferenceResult, *, page_filter: int | None = None) -> LayoutOutput:
+        out = super().to_layout_output(inference_result, page_filter=page_filter)
+        return out.model_copy(update={"model": LayoutDetectionModel.LMKIT_LAYOUT})
+
+
 @register_layout_adapter("extend_parse", priority=89)
 class ExtendLayoutAdapter(LayoutAdapter):
     """Adapter that extracts LayoutOutput from Extend ParseOutput.layout_pages.
