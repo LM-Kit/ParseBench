@@ -1,177 +1,176 @@
-"""Normalize structured chart JSON into markdown tables for chart scoring.
+"""Render chart2json data as tables consumed by the existing chart rules.
 
-The chart dimension's ``ChartDataPointRule`` (rules_chart.py) scores a data point
-only if its value appears in a markdown/HTML **table** cell with the rule's labels in
-the same row/column (or in a heading/caption before the table). Parsers that emit a
-figure's data as *structured JSON* (chart2json-style) therefore score 0 even when the
-data is correct, because the value never lands in a table cell.
+Supported shapes are ``values: {series: {category: value}}``, a single-series
+``values: {category: value}``, and ``panels: {name: {values: ...}}``. Older
+``series`` panel payloads and explicit lists of ``{"x": ..., "y": ...}``
+points are supported too. Conversion uses only the predicted output; it does
+not infer missing coordinates, repair invalid JSON, or consult annotations.
 
-This module converts such chart JSON into equivalent markdown tables so the existing,
-unchanged chart rules can find the points: x-axis keys become row labels, series names
-become column headers, values fill the cells, and the chart/panel title becomes a
-``##`` heading above the table. It is parser-agnostic — any pipeline whose output
-markdown contains a chart2json JSON object can be normalized before the rules run.
-
-Accepted JSON shapes (either as the whole output or inside a ```json fenced block):
-  - single chart:   {"title": ..., "values": {series: {x: y}}}
-  - multi-panel:    {"title": ..., "panels": {panel: {"series": {series: {x: y}}, ...}}}
-Series values may be {x: y} dicts, lists of {"x":..,"y":..}, lists of scalars, or (for
-box-whisker) a {stat_name: value} dict — all are rendered as table rows/cells.
+The result is Markdown, with HTML tables for labels that cannot be represented
+faithfully by the scorer's pipe-delimited Markdown parser.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import re
+from html import escape
 from typing import Any
 
 
-def contains_chart_json(text: str) -> bool:
-    """Cheap check: does the text contain a chart2json object (a JSON object with a
-    top-level 'values' or 'panels' key)? Used to decide whether to normalize."""
-    obj = extract_json(text)
-    return isinstance(obj, dict) and ("values" in obj or "panels" in obj)
+def _json_objects(text: str) -> list[dict]:
+    """Decode complete fenced objects, or standalone/prefixed JSON.
+
+    Using the JSON decoder, rather than counting braces, handles braces and
+    escaped quotes inside strings. A malformed fenced object is skipped as a
+    whole; its nested objects must not be mistaken for a complete chart.
+    """
+    if not isinstance(text, str) or not text.strip():
+        return []
+    blocks = re.findall(r"```(?:json)?[ \t]*\r?\n(.*?)```", text, re.DOTALL | re.IGNORECASE)
+    objects: list[dict] = []
+    if blocks:
+        for block in blocks:
+            try:
+                obj = json.loads(block)
+            except (ValueError, RecursionError):
+                continue
+            if isinstance(obj, dict):
+                objects.append(obj)
+        return objects
+
+    start = text.find("{")
+    if start < 0:
+        return []
+    try:
+        obj, _ = json.JSONDecoder().raw_decode(text, start)
+    except (ValueError, RecursionError):
+        return []
+    return [obj] if isinstance(obj, dict) else []
 
 
 def extract_json(text: str) -> dict | None:
-    """Extract the first balanced JSON object from text, tolerating ```json fences
-    and surrounding prose (e.g. a leading caption line). Returns None if none parses."""
-    if not text or not text.strip():
-        return None
-    t = text.strip()
-    m = re.search(r"```(?:json)?\s*(\{)", t, re.DOTALL)
-    start = m.start(1) if m else t.find("{")
-    if start == -1:
-        return None
-    depth = 0
-    for i in range(start, len(t)):
-        if t[i] == "{":
-            depth += 1
-        elif t[i] == "}":
-            depth -= 1
-            if depth == 0:
-                try:
-                    return json.loads(t[start : i + 1])
-                except json.JSONDecodeError:
-                    return None
-    return None
+    """Extract the first complete JSON object, if present."""
+    return next(iter(_json_objects(text)), None)
 
 
-def _fmt(v: Any) -> str:
-    """Render a cell value; drop the trailing .0 on integral floats, pass strings through."""
-    if isinstance(v, bool):
-        return str(v)
-    if isinstance(v, float) and v.is_integer():
-        return str(int(v))
-    return str(v)
+def contains_chart_json(text: str) -> bool:
+    return any("values" in obj or "panels" in obj for obj in _json_objects(text))
 
 
-def _series_points(series_val: Any) -> dict[str, Any]:
-    """Coerce a series value into {x_label: y} for any shape a model emits:
-    {x: y} dict, [{"x":..,"y":..}] list, [scalars], or a box-stat {name: value} dict."""
-    if isinstance(series_val, dict):
-        return {str(k): v for k, v in series_val.items()}
-    if isinstance(series_val, list):
-        pts: dict[str, Any] = {}
-        for i, p in enumerate(series_val):
-            if isinstance(p, dict) and "y" in p:
-                pts[str(p.get("x", i))] = p["y"]
-            elif isinstance(p, (int, float, str)):
-                pts[str(i)] = p
-        return pts
+def _is_value(value: Any) -> bool:
+    return (
+        isinstance(value, (str, int, float))
+        and not isinstance(value, bool)
+        and (not isinstance(value, float) or math.isfinite(value))
+    )
+
+
+def _fmt(value: Any) -> str:
+    if not _is_value(value):
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def _title(value: Any) -> str:
+    if not isinstance(value, str) or value.strip().lower() in {"", "none", "null", "n/a"}:
+        return ""
+    return value.strip()
+
+
+def _series_points(series: Any) -> dict[str, Any]:
+    if isinstance(series, dict):
+        return {str(key): value for key, value in series.items() if _is_value(value) or value is None}
+    if isinstance(series, list):
+        points: dict[str, Any] = {}
+        for point in series:
+            if not isinstance(point, dict) or not _is_value(point.get("x")) or not _is_value(point.get("y")):
+                continue
+            label = _fmt(point["x"])
+            if label in points:
+                # A table cell cannot represent two different points with the
+                # same coordinate. Do not silently replace either observation.
+                return {}
+            points[label] = point["y"]
+        return points
     return {}
 
 
-def _panel_to_table(title: str, series: dict[str, Any]) -> str:
-    """Render one panel's series dict as a markdown table.
-
-    First column = x-axis label; one column per series; cells = values. The union of
-    x-keys across series (first-seen order) forms the rows, so every (series, x) value
-    sits in a cell with the series name as its column header and the x-label as its row
-    header — exactly what ChartDataPointRule matches labels against.
-    """
-    norm: dict[str, dict[str, Any]] = {}
-    for sname, sval in series.items():
-        pts = _series_points(sval)
-        if pts:
-            norm[str(sname)] = pts
-    if not norm:
+def _render_table(headers: list[str], rows: list[list[str]], titles: list[str]) -> str:
+    if not rows:
         return ""
+    cells = [*titles, *headers, *(cell for row in rows for cell in row)]
+    # The upstream Markdown parser splits literally on pipes and newlines;
+    # backslash-escaping a pipe therefore cannot preserve a label.
+    if not any(headers) or any(re.search(r"[|<>&\r\n]", cell) for cell in cells):
+        caption_text = " / ".join(title for title in titles if title)
+        caption = f"<caption>{escape(caption_text)}</caption>" if caption_text else ""
+        head = "".join(f"<th>{escape(cell)}</th>" for cell in headers)
+        body = "".join("<tr>" + "".join(f"<td>{escape(cell)}</td>" for cell in row) + "</tr>" for row in rows)
+        # Encode pipes so the Markdown parser does not also interpret these
+        # HTML rows as a second, malformed table.
+        return f"<table>{caption}<thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>".replace("|", "&#124;")
+    headings = [f"{'#' * (index + 1)} {title}" for index, title in enumerate(titles) if title]
+    lines = ["| " + " | ".join(headers) + " |", "| " + " | ".join(["---"] * len(headers)) + " |"]
+    lines.extend("| " + " | ".join(row) + " |" for row in rows)
+    return "\n\n".join([*headings, "\n".join(lines)])
 
-    xkeys: list[str] = []
-    seen: set[str] = set()
-    for pts in norm.values():
-        for x in pts:
-            if x not in seen:
-                seen.add(x)
-                xkeys.append(x)
 
-    series_names = list(norm.keys())
-    header = "| " + " | ".join(["x"] + series_names) + " |"
-    sep = "| " + " | ".join(["---"] * (len(series_names) + 1)) + " |"
-    rows = [header, sep]
-    for x in xkeys:
-        cells = [x] + [_fmt(norm[s].get(x, "")) for s in series_names]
-        rows.append("| " + " | ".join(cells) + " |")
+def _panel_to_table(titles: list[str], values: dict[str, Any]) -> str:
+    if not values:
+        return ""
+    if all(_is_value(value) or value is None for value in values.values()):
+        return _render_table(["", ""], [[str(key), _fmt(value)] for key, value in values.items()], titles)
 
-    out: list[str] = []
-    if title and title.lower() != "none":
-        out.append(f"## {title}")
-    out.append("\n".join(rows))
-    return "\n\n".join(out)
+    series = {str(name): points for name, values in values.items() if (points := _series_points(values))}
+    if not series:
+        return ""
+    categories = list(dict.fromkeys(category for points in series.values() for category in points))
+    rows = [[category, *(_fmt(points.get(category)) for points in series.values())] for category in categories]
+    return _render_table(["", *series], rows, titles)
 
 
 def chart_json_to_markdown(chart: dict) -> str:
-    """Convert a chart2json object into markdown tables (one heading + table per panel).
-
-    Handles the rich schema (``panels: {name: {series, chart_type, ...}}``) and the flat
-    schema (``values: {panel: {series: {x:y}}}`` or ``{series: {x:y}}``).
-    """
+    """Render each panel separately, preserving its title, series and categories."""
     if not isinstance(chart, dict):
         return ""
-    figure_title = str(chart.get("title") or "").strip()
-    parts: list[str] = []
-    if figure_title and figure_title.lower() != "none":
-        parts.append(f"# {figure_title}")
-
+    figure_title = _title(chart.get("title"))
+    tables: list[str] = []
     panels = chart.get("panels")
     if isinstance(panels, dict) and panels:
-        for pname, pval in panels.items():
-            series = pval.get("series") if isinstance(pval, dict) else None
-            if isinstance(series, dict) and series:
-                tbl = _panel_to_table(str(pname), series)
-                if tbl:
-                    parts.append(tbl)
-        return "\n\n".join(parts)
+        for name, panel in panels.items():
+            if not isinstance(panel, dict):
+                continue
+            values = panel.get("values") or panel.get("series")
+            if isinstance(values, dict):
+                # Repeat the figure title for each panel: chart rules only
+                # consider the context immediately surrounding that table.
+                tables.append(_panel_to_table([figure_title, _title(name)], values))
+    else:
+        values = chart.get("values")
+        if isinstance(values, dict) and values:
+            nested_panels = all(
+                isinstance(panel, dict) and panel and all(isinstance(series, (dict, list)) for series in panel.values())
+                for panel in values.values()
+            )
+            if nested_panels:
+                for name, panel in values.items():
+                    tables.append(_panel_to_table([figure_title, _title(name)], panel))
+            else:
+                tables.append(_panel_to_table([figure_title], values))
+    return "\n\n".join(table for table in tables if table)
 
-    values = chart.get("values")
-    if isinstance(values, dict) and values:
-        def _is_panel(v: Any) -> bool:
-            return isinstance(v, dict) and bool(v) and all(isinstance(x, (dict, list)) for x in v.values())
 
-        if all(_is_panel(v) for v in values.values()):
-            for pname, series in values.items():
-                tbl = _panel_to_table(str(pname), series)
-                if tbl:
-                    parts.append(tbl)
-        else:
-            tbl = _panel_to_table(figure_title, values)
-            if tbl:
-                parts = [tbl]
-        return "\n\n".join(parts)
-
-    return "\n\n".join(parts)
+def chart_description_to_markdown(description: str) -> str:
+    """Convert all complete chart JSON blocks in one figure description."""
+    tables = [chart_json_to_markdown(obj) for obj in _json_objects(description)]
+    return "\n\n".join(table for table in tables if table)
 
 
 def normalize_markdown_with_chart_json(markdown: str) -> str:
-    """If ``markdown`` contains a chart2json object, append the equivalent markdown
-    tables so the chart rules can score it; otherwise return it unchanged. Non-invasive:
-    the original text is preserved and the derived tables are appended after it.
-    """
-    obj = extract_json(markdown)
-    if not (isinstance(obj, dict) and ("values" in obj or "panels" in obj)):
-        return markdown
-    tables = chart_json_to_markdown(obj)
-    if not tables:
-        return markdown
-    return f"{markdown}\n\n{tables}" if markdown.strip() else tables
+    """Append derived chart tables while preserving the original output."""
+    tables = chart_description_to_markdown(markdown)
+    return f"{markdown}\n\n{tables}" if tables and markdown.strip() else tables or markdown

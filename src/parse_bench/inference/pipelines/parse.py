@@ -2783,6 +2783,7 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             product_type=ProductType.PARSE,
             config={
                 "version": "2.0",
+                "description_element_types": "figure",
             },
         )
     )
@@ -2799,6 +2800,7 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             product_type=ProductType.PARSE,
             config={
                 "version": "2.0",
+                "description_element_types": "figure",
                 "batch_size": 1000,
                 "batch_wait_seconds": 120,
                 "timeout": 7200,

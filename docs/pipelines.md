@@ -135,6 +135,24 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 | `google_docai` | Document AI OCR | `GOOGLE_DOCAI_PROJECT_ID`, `GOOGLE_DOCAI_PROCESSOR_ID` |
 | **`google_docai_layout`** | Document AI Layout (In paper: *Google Cloud Document AI*) | `GOOGLE_DOCAI_PROJECT_ID`, `GOOGLE_DOCAI_LAYOUT_PROCESSOR_ID` |
 
+### Databricks AI Parse
+
+| Pipeline | Description |
+|---|---|
+| `databricks_ai_parse` | `ai_parse_document` v2.0 with figure descriptions |
+| `databricks_ai_parse_batch` | Same options, with batched SQL execution |
+
+Both pipelines require `DATABRICKS_HOST`, `DATABRICKS_TOKEN`,
+`DATABRICKS_SQL_WAREHOUSE_ID`, and `DATABRICKS_AI_PARSE_VOLUME` (a Unity Catalog
+volume path). They request `descriptionElementTypes='figure'`. The provider
+converts chart JSON embedded in figure descriptions into Markdown/HTML tables,
+preserving panel titles, series labels, categories, and values for the existing
+chart rules. The raw response is retained for inspection. Descriptions without
+valid chart JSON leave the element's original content unchanged.
+
+Run the chart dimension with `parse-bench run databricks_ai_parse --group chart`.
+Existing results produced without figure descriptions need fresh inference.
+
 ### Reducto
 
 | Pipeline | Description | Env Var |
