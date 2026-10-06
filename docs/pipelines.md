@@ -135,13 +135,6 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 | `google_docai` | Document AI OCR | `GOOGLE_DOCAI_PROJECT_ID`, `GOOGLE_DOCAI_PROCESSOR_ID` |
 | **`google_docai_layout`** | Document AI Layout (In paper: *Google Cloud Document AI*) | `GOOGLE_DOCAI_PROJECT_ID`, `GOOGLE_DOCAI_LAYOUT_PROCESSOR_ID` |
 
-### Databricks AI Parse
-
-| Pipeline | Description | Env Vars |
-|---|---|---|
-| `databricks_ai_parse` | `ai_parse_document` v2.0 with figure descriptions | `DATABRICKS_HOST`, `DATABRICKS_TOKEN`, `DATABRICKS_SQL_WAREHOUSE_ID`, `DATABRICKS_AI_PARSE_VOLUME` |
-| `databricks_ai_parse_batch` | Same options, with batched SQL execution | `DATABRICKS_HOST`, `DATABRICKS_TOKEN`, `DATABRICKS_SQL_WAREHOUSE_ID`, `DATABRICKS_AI_PARSE_VOLUME` |
-
 ### Reducto
 
 | Pipeline | Description | Env Var |
