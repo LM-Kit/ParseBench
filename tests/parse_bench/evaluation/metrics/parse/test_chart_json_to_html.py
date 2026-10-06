@@ -78,3 +78,13 @@ def test_missing_values_are_not_zero():
 
 def test_unlabeled_values_do_not_invent_coordinates():
     assert chart_json_to_html({"values": {"Sales": [7, 9]}}) == ""
+
+
+def test_point_lists_preserve_repeated_x_values_and_series():
+    chart = {"values": {"Sales": [{"x": "2024", "y": 10}, {"x": "2024", "y": 12}], "Profit": {"2024": 3}}}
+    html = chart_json_to_html(chart)
+    assert parse_chart_tables(html)[0].data.tolist() == [["x", "y"], ["2024", "10"], ["2024", "12"]]
+    for value in ["10", "12"]:
+        assert _passes(html, value, ["Sales", "2024", "y"])
+        assert not _passes(html, value, ["Profit", "2024"])
+    assert _passes(html, "3", ["Profit", "2024"])

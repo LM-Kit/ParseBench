@@ -60,18 +60,6 @@ def _title(value: Any) -> str:
 def _series_points(series: Any) -> dict[str, Any]:
     if isinstance(series, dict):
         return {str(key): value for key, value in series.items() if _is_value(value) or value is None}
-    if isinstance(series, list):
-        points: dict[str, Any] = {}
-        for point in series:
-            if not isinstance(point, dict) or not _is_value(point.get("x")) or not _is_value(point.get("y")):
-                continue
-            label = _fmt(point["x"])
-            if label in points:
-                # A table cell cannot represent two different points with the
-                # same coordinate. Do not silently replace either observation.
-                return {}
-            points[label] = point["y"]
-        return points
     return {}
 
 
@@ -92,12 +80,23 @@ def _panel_to_table(titles: list[str], values: dict[str, Any]) -> str:
     if all(_is_value(value) or value is None for value in values.values()):
         return _render_table(["", ""], [[str(key), _fmt(value)] for key, value in values.items()], titles)
 
-    series = {str(name): points for name, values in values.items() if (points := _series_points(values))}
-    if not series:
-        return ""
-    categories = list(dict.fromkeys(category for points in series.values() for category in points))
-    rows = [[category, *(_fmt(points.get(category)) for points in series.values())] for category in categories]
-    return _render_table(["", *series], rows, titles)
+    tables = []
+    series = {}
+    for name, data in values.items():
+        if isinstance(data, list):
+            rows = [
+                [_fmt(point["x"]), _fmt(point["y"])]
+                for point in data
+                if isinstance(point, dict) and _is_value(point.get("x")) and _is_value(point.get("y"))
+            ]
+            tables.append(_render_table(["x", "y"], rows, [*titles, str(name)]))
+        elif points := _series_points(data):
+            series[str(name)] = points
+    if series:
+        categories = list(dict.fromkeys(category for points in series.values() for category in points))
+        rows = [[category, *(_fmt(points.get(category)) for points in series.values())] for category in categories]
+        tables.append(_render_table(["", *series], rows, titles))
+    return "\n\n".join(table for table in tables if table)
 
 
 def chart_json_to_html(chart: dict) -> str:
