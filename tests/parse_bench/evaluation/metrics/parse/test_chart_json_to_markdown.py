@@ -1,4 +1,4 @@
-"""Tests for chart2json -> markdown-table normalization used by the chart dimension."""
+"""Tests for chart JSON normalization used by the chart dimension."""
 
 import json
 

@@ -1,14 +1,4 @@
-"""Render chart2json data as tables consumed by the existing chart rules.
-
-Supported shapes are ``values: {series: {category: value}}``, a single-series
-``values: {category: value}``, and ``panels: {name: {values: ...}}``. Older
-``series`` panel payloads and explicit lists of ``{"x": ..., "y": ...}``
-points are supported too. Conversion uses only the predicted output; it does
-not infer missing coordinates, repair invalid JSON, or consult annotations.
-
-The result is Markdown, with HTML tables for labels that cannot be represented
-faithfully by the scorer's pipe-delimited Markdown parser.
-"""
+"""Render chart2json data as Markdown/HTML tables for the existing chart rules."""
 
 from __future__ import annotations
 
@@ -20,12 +10,7 @@ from typing import Any
 
 
 def _json_objects(text: str) -> list[dict]:
-    """Decode complete fenced objects, or standalone/prefixed JSON.
-
-    Using the JSON decoder, rather than counting braces, handles braces and
-    escaped quotes inside strings. A malformed fenced object is skipped as a
-    whole; its nested objects must not be mistaken for a complete chart.
-    """
+    """Decode fenced or prefixed JSON, skipping malformed blocks as a whole."""
     if not isinstance(text, str) or not text.strip():
         return []
     blocks = re.findall(r"```(?:json)?[ \t]*\r?\n(.*?)```", text, re.DOTALL | re.IGNORECASE)

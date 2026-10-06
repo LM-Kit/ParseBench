@@ -2,7 +2,6 @@
 
 import copy
 import json
-from pathlib import Path
 
 import pytest
 
@@ -13,11 +12,24 @@ from parse_bench.inference.providers.parse.databricks_ai_parse import Databricks
 
 @pytest.fixture
 def figure():
-    path = Path(__file__).parent / "fixtures" / "databricks_chart_figure.json"
-    return json.loads(path.read_text())["figure"]
+    chart = {
+        "panels": {
+            "193 UN Member States": {"values": {"193 UN Member States": {"IF": 0.8079}}},
+            "LDC/LLDCs": {"values": {"LDC/LLDCs": {"CP": 0.4444}}},
+            "LDCs": {"values": {"LDCs": {"TEC": 0.3667}}},
+            "LDC/SIDS": {"values": {"LDC/SIDS": {"EPI": 0.1969}}},
+        }
+    }
+    return {
+        "id": 0,
+        "type": "figure",
+        "bbox": [{"page_id": 0}],
+        "content": "Online Service Index",
+        "description": f"DESCRIPTION: Bar charts.\nJSON:\n```json\n{json.dumps(chart)}\n```",
+    }
 
 
-def test_live_response_fixture_scores_with_existing_rules(figure):
+def test_chart_description_scores_with_existing_rules(figure):
     markdown = _render_markdown([figure])
     for value, labels in [
         ("0.8079", ["IF", "193 UN Member States"]),
