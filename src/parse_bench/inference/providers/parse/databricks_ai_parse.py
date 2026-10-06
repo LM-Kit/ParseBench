@@ -64,9 +64,7 @@ from typing import Any
 
 import requests
 
-from parse_bench.evaluation.metrics.parse.chart_json_to_markdown import (
-    chart_description_to_markdown,
-)
+from parse_bench.evaluation.metrics.parse.chart_json_to_html import chart_description_to_html
 from parse_bench.inference.providers.base import (
     Provider,
     ProviderConfigError,
@@ -590,7 +588,7 @@ def _render_markdown(elements: list[dict[str, Any]]) -> str:
                 else:
                     parts.append(content)
             if el_type == "figure":
-                chart_tables = chart_description_to_markdown(el.get("description") or "")
+                chart_tables = chart_description_to_html(el.get("description") or "")
                 if chart_tables:
                     parts.append(chart_tables)
     return "\n\n".join(parts)
