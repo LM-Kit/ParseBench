@@ -1,13 +1,12 @@
-"""Provider for Databricks ``ai_parse_document`` SQL function.
+"""Provider for Databricks ``ai_parse_document`` over SQL or REST.
 
-``ai_parse_document`` is a Databricks built-in SQL function. It has no
-dedicated REST endpoint, so we invoke it via the Statement Execution API
-on a SQL Warehouse. The input byte argument must reference a Unity Catalog
-Volume (the ``BINARY`` parameter type is not supported by the SQL
-parameters wire format).
+Both transports stage files in a Unity Catalog volume. SQL uses the Statement
+Execution API on a SQL warehouse. REST calls
+``POST /api/2.0/ai-functions/ai_parse_document`` directly with the volume path,
+without a warehouse or statement polling.
 
-Operating modes
----------------
+SQL operating modes
+-------------------
 ``batch_size = 1`` (default): one SQL statement per request::
 
     PUT /api/2.0/fs/files/<volume>/<uuid>.pdf
@@ -128,7 +127,8 @@ class DatabricksAiParseProvider(Provider):
           ``adb-xxx.azuredatabricks.net``. Reads ``DATABRICKS_HOST`` if unset.
         - token (str, required): PAT / OAuth bearer token. Reads
           ``DATABRICKS_TOKEN`` if unset.
-        - warehouse_id (str, required): SQL Warehouse to run the statement
+        - transport (str, default "sql"): "sql" or "rest".
+        - warehouse_id (str, required for SQL): SQL Warehouse to run the statement
           on. Reads ``DATABRICKS_SQL_WAREHOUSE_ID`` if unset.
         - volume_path (str, required): UC Volume prefix used as a staging
           area, e.g. ``/Volumes/main/default/llamabench``. Reads
@@ -137,8 +137,7 @@ class DatabricksAiParseProvider(Provider):
         - description_element_types (str, default ""): pass-through for the
           ``descriptionElementTypes`` option (``""``, ``"figure"``, ``"*"``).
         - poll_interval (float, default 2.0): seconds between polls.
-        - timeout (int, default 900): total wait budget in seconds for the
-          SQL statement.
+        - timeout (int, default 900): REST request timeout or SQL statement wait budget.
         - batch_size (int, default 1): number of requests to coalesce into
           a single SQL statement. ``1`` = per-file mode.
         - batch_wait_seconds (float, default 10): when batch_size > 1, the
@@ -152,6 +151,9 @@ class DatabricksAiParseProvider(Provider):
     def __init__(self, provider_name: str, base_config: dict[str, Any] | None = None):
         super().__init__(provider_name, base_config)
 
+        self._transport = self.base_config.get("transport", "sql")
+        if self._transport not in {"sql", "rest"}:
+            raise ProviderConfigError("Databricks transport must be 'sql' or 'rest'.")
         host = self.base_config.get("host") or os.getenv("DATABRICKS_HOST")
         token = self.base_config.get("token") or os.getenv("DATABRICKS_TOKEN")
         warehouse_id = self.base_config.get("warehouse_id") or os.getenv("DATABRICKS_SQL_WAREHOUSE_ID")
@@ -165,7 +167,7 @@ class DatabricksAiParseProvider(Provider):
             raise ProviderConfigError(
                 "Databricks token is required. Set DATABRICKS_TOKEN env var or pass 'token' in base_config."
             )
-        if not warehouse_id:
+        if self._transport == "sql" and not warehouse_id:
             raise ProviderConfigError(
                 "Databricks warehouse_id is required. "
                 "Set DATABRICKS_SQL_WAREHOUSE_ID env var or pass 'warehouse_id' in base_config."
@@ -190,6 +192,8 @@ class DatabricksAiParseProvider(Provider):
 
         batch_size = int(self.base_config.get("batch_size", 1))
         self._batch_size = max(1, batch_size)
+        if self._transport == "rest" and self._batch_size > 1:
+            raise ProviderConfigError("Databricks REST accepts one document per request; batch_size must be 1.")
         self._batch_wait_s = float(self.base_config.get("batch_wait_seconds", 10.0))
         self._per_request_timeout = int(self.base_config.get("per_request_timeout", 1800))
 
@@ -362,14 +366,29 @@ class DatabricksAiParseProvider(Provider):
         remote_path = f"{self._volume_base}/{remote_name}"
 
         started_at = datetime.now()
+        statement_id = None
         try:
             self._upload_file(source, remote_path)
-            statement = self._build_statement(remote_path, include_path=False)
-            response = self._execute_statement(statement)
-            rows = (response.get("result") or {}).get("data_array") or []
-            if not rows or not rows[0]:
-                raise ProviderPermanentError("Databricks statement returned no rows.")
-            variant = self._coerce_variant(rows[0][0])
+            if self._transport == "rest":
+                options = {"version": self._version}
+                if self._description_element_types:
+                    options["descriptionElementTypes"] = self._description_element_types
+                rest_response = requests.post(
+                    f"{self._base_url}/api/2.0/ai-functions/ai_parse_document",
+                    headers=self._auth_headers,
+                    json={"content": remote_path, "options": options},
+                    timeout=self._timeout,
+                )
+                self._raise_for_http(rest_response, "parse document")
+                variant = self._coerce_variant(rest_response.json())
+            else:
+                statement = self._build_statement(remote_path, include_path=False)
+                response = self._execute_statement(statement)
+                statement_id = response.get("statement_id")
+                rows = (response.get("result") or {}).get("data_array") or []
+                if not rows or not rows[0]:
+                    raise ProviderPermanentError("Databricks statement returned no rows.")
+                variant = self._coerce_variant(rows[0][0])
         finally:
             self._delete_file(remote_path)
 
@@ -383,7 +402,7 @@ class DatabricksAiParseProvider(Provider):
             product_type=request.product_type,
             raw_output={
                 "ai_parse_document": variant,
-                "statement_id": response.get("statement_id"),
+                "statement_id": statement_id,
                 "_config": self._config_snapshot(),
             },
             started_at=started_at,
@@ -515,6 +534,7 @@ class DatabricksAiParseProvider(Provider):
 
     def _config_snapshot(self) -> dict[str, Any]:
         return {
+            "transport": self._transport,
             "version": self._version,
             "description_element_types": self._description_element_types,
             "warehouse_id": self._warehouse_id,

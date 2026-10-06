@@ -2787,6 +2787,15 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    register_fn(
+        PipelineSpec(
+            pipeline_name="databricks_ai_parse_rest",
+            provider_name="databricks_ai_parse",
+            product_type=ProductType.PARSE,
+            config={"version": "2.0", "transport": "rest"},
+        )
+    )
+
     # Batched variant: Databricks' recommended operating mode — submit the
     # whole dataset as ONE SQL statement so warehouse spin-up/idle is paid
     # once instead of per micro-batch. Model DBUs are unchanged (per-page
