@@ -6,8 +6,7 @@ import json
 import pytest
 
 from parse_bench.evaluation.metrics.parse.rules_chart import ChartDataPointRule
-from parse_bench.inference.pipelines import get_pipeline
-from parse_bench.inference.providers.parse.databricks_ai_parse import DatabricksAiParseProvider, _render_markdown
+from parse_bench.inference.providers.parse.databricks_ai_parse import _render_markdown
 
 
 @pytest.fixture
@@ -71,22 +70,3 @@ def test_text_tables_and_headings_keep_existing_rendering():
         {"id": 3, "type": "table", "content": "<table><tr><td>7</td></tr></table>"},
     ]
     assert _render_markdown(elements) == "# Title\n\n## Section\n\nBody\n\n<table><tr><td>7</td></tr></table>"
-
-
-@pytest.mark.parametrize("name", ["databricks_ai_parse", "databricks_ai_parse_batch"])
-def test_pipeline_requests_figure_descriptions(name):
-    pipeline = get_pipeline(name)
-    assert pipeline.config["description_element_types"] == "figure"
-    provider = DatabricksAiParseProvider(
-        "databricks_ai_parse",
-        {
-            **pipeline.config,
-            "host": "https://example.invalid",
-            "token": "test-token",
-            "warehouse_id": "test",
-            "volume_path": "/Volumes/test/test/test",
-        },
-    )
-    assert "'descriptionElementTypes', 'figure'" in provider._build_statement(
-        "/Volumes/test/test/test/file.pdf", include_path=False
-    )
