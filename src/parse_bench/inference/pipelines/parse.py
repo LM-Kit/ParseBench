@@ -2668,6 +2668,26 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # =========================================================================
+    # aeddix-alpine-ocr (aeddix-labs/aeddix-alpine-ocr, fine-tune of
+    # opendatalab/MinerU2.5-Pro-2605-1.2B) through the kdl_frontier_nano
+    # pipeline; same serving requirements as KDL-Frontier-Parser-nano
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="aeddix_alpine_ocr_kdl",
+            provider_name="aeddix_alpine_ocr_kdl",
+            product_type=ProductType.PARSE,
+            config={
+                "endpoint_url": "",  # via AEDDIX_ALPINE_OCR_KDL_ENDPOINT_URL
+                "model": "",  # via AEDDIX_ALPINE_OCR_KDL_MODEL (default aeddix-alpine-ocr)
+                "dpi": 144,
+                "timeout": 900,
+            },
+        )
+    )
+
     register_fn(
         PipelineSpec(
             pipeline_name="mineru25_vllm",

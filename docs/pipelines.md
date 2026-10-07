@@ -362,6 +362,14 @@ Fine-tune of florin-parser-nano ([cloudraker/rakedoc-nano](https://huggingface.c
 |---|---|---|
 | `rakedoc_nano` | vLLM OpenAI-compatible endpoint (layout + per-region recognition) | `RAKEDOC_NANO_ENDPOINT_URL` |
 
+### aeddix-alpine-ocr (KDL pipeline)
+
+Fine-tune of MinerU2.5-Pro-2605-1.2B ([aeddix-labs/aeddix-alpine-ocr](https://huggingface.co/aeddix-labs/aeddix-alpine-ocr), tag `v0.1`); served identically to KDL-Frontier-Parser-nano and driven by the unchanged `kdl_frontier_nano` two-stage pipeline and markdown emission (see the provider module docstring for the exact `vllm serve` command).
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `aeddix_alpine_ocr_kdl` | vLLM OpenAI-compatible endpoint (layout + per-region recognition) | `AEDDIX_ALPINE_OCR_KDL_ENDPOINT_URL` |
+
 ---
 
 ## Local Pipelines (No API key needed)
