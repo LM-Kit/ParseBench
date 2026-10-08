@@ -2817,26 +2817,6 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
-    # Batched variant: Databricks' recommended operating mode — submit the
-    # whole dataset as ONE SQL statement so warehouse spin-up/idle is paid
-    # once instead of per micro-batch. Model DBUs are unchanged (per-page
-    # billing). Run with max_concurrent >= dataset size so every request is
-    # queued before the debounce window flushes.
-    register_fn(
-        PipelineSpec(
-            pipeline_name="databricks_ai_parse_batch",
-            provider_name="databricks_ai_parse",
-            product_type=ProductType.PARSE,
-            config={
-                "version": "2.0",
-                "batch_size": 1000,
-                "batch_wait_seconds": 120,
-                "timeout": 7200,
-                "per_request_timeout": 9000,
-            },
-        )
-    )
-
     # =========================================================================
     # Mistral OCR Pipelines
     # =========================================================================
