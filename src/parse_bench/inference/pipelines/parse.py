@@ -2324,6 +2324,21 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
                 )
             )
 
+    # OpenAI GPT-6.1 Sol - Parse with Layout File - Low Reasoning
+    register_fn(
+        PipelineSpec(
+            pipeline_name="openai_gpt_6_1_sol_reasoning_low_parse_with_layout_file",
+            provider_name="openai",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "gpt-6.1-sol",
+                "max_tokens": 32768,
+                "mode": "parse_with_layout_file",
+                "reasoning_effort": "low",
+            },
+        )
+    )
+
     # OpenAI GPT-5.4 Nano - Parse with Layout
     register_fn(
         PipelineSpec(
@@ -2382,6 +2397,21 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
                 "model": "claude-haiku-4-5-20251001",
                 "max_tokens": 32768,
                 "mode": "parse_with_layout_file",
+            },
+        )
+    )
+
+    # Anthropic Haiku 5.5 - Parse with Layout File - Adaptive Thinking
+    register_fn(
+        PipelineSpec(
+            pipeline_name="anthropic_haiku_5_5_parse_with_layout_file",
+            provider_name="anthropic",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "claude-haiku-5-5",
+                "max_tokens": 32768,
+                "mode": "parse_with_layout_file",
+                "thinking": {"type": "adaptive"},
             },
         )
     )
