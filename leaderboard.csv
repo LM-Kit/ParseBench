@@ -131,6 +131,7 @@ GLM-OCR,VLM - Open Weight,29.6,66.1,1.7,78,2.3,0,,,,,,zai-org/GLM-OCR
 KDL-Frontier-Parser-nano,VLM - Open Weight,76.36,85.56,63.41,87.19,66.81,78.84,,,,,,KDLAI/KDL-Frontier-Parser-nano
 florin-parser-nano,VLM - Open Weight,76.69,86.10,65.19,87.37,70.64,74.14,,,,,,florin-inc/florin-parser-nano
 rakedoc-nano,VLM - Open Weight,77.23,86.44,64.89,88.84,71.68,74.28,,,,,,cloudraker/rakedoc-nano
+aeddix-alpine-ocr (KDL pipeline),VLM - Open Weight,76.77,85.89,68.78,87.90,66.05,75.21,,,,,,aeddix-labs/aeddix-alpine-ocr
 DeepSeek V4.1 Flash (Thinking High),VLM - Open Weight,65.72,82.82,51.11,87.33,73.48,33.87,,,,,,deepseek-ai/DeepSeek-V4.1-Flash
 DeepSeek V4.1 Flash (No Thinking),VLM - Open Weight,56.57,79.65,20.46,88.09,66.05,28.61,,,,,,deepseek-ai/DeepSeek-V4.1-Flash
 MarkItDown,Open Source - Local,18.63,15.77,2.02,64.54,0.91,9.90,,,,,,
