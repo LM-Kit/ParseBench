@@ -367,7 +367,7 @@ Fine-tune of florin-parser-nano ([cloudraker/rakedoc-nano](https://huggingface.c
 The document parser of [LM-Kit](https://lm-kit.com), served over HTTP by LM-Kit One, the LM-Kit server you host yourself. Start the public image on a machine with an NVIDIA GPU, then run a pipeline; the server downloads its model on the first request (2.3 GB, once) and needs no key or license:
 
 ```bash
-docker run -d --name lmkit --gpus all --network host -e Security__NetworkAccess=LocalOnly lmkitone/lm-kit-one:2026.10.5
+docker run -d --name lmkit --gpus all --network host -e Security__NetworkAccess=LocalOnly lmkitone/lm-kit-one:latest
 uv run parse-bench run lmkit_high --max_concurrent 4
 ```
 

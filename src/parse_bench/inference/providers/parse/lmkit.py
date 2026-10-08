@@ -4,7 +4,7 @@ LM-Kit One is a self-hosted server; the parser runs on your own GPU. Start the p
 (``docker pull lmkitone/lm-kit-one``), then run a pipeline::
 
     docker run -d --name lmkit --gpus all --network host \\
-        -e Security__NetworkAccess=LocalOnly lmkitone/lm-kit-one:2026.10.5
+        -e Security__NetworkAccess=LocalOnly lmkitone/lm-kit-one:latest
     uv run parse-bench run lmkit_high --max_concurrent 4
 
 The server downloads its model on the first request (2.3 GB, once). ``LocalOnly`` keeps the
