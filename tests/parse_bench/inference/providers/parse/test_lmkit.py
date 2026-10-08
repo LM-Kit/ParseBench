@@ -217,6 +217,58 @@ def test_without_regions_every_element_is_its_own_box():
     assert (items[0].bbox.y, items[0].bbox.h) == pytest.approx((100 / 800, 10 / 800))
 
 
+def _unit_pages() -> tuple[dict, dict]:
+    """The same parse as two server generations send it: the grounding units (a list as a whole,
+    a drawn icon) as layout-only elements, then as regions listing no element."""
+    legacy = _row_page()
+    legacy["elements"] += [
+        {
+            "category": "text",
+            "reading_index": 3,
+            "confidence": 0.9,
+            "bbox": [60, 98, 540, 172],
+            "content": {"type": "repeated_text", "text": "Net sales: EUR 4.3 billion A paragraph."},
+        },
+        {
+            "category": "figure",
+            "reading_index": 4,
+            "confidence": 0.75,
+            "bbox": [500, 20, 540, 60],
+            "content": {"type": "repeated_text", "text": ""},
+        },
+    ]
+    legacy["regions"] += [
+        {"category": "text", "bbox": [60, 98, 540, 172], "members": [3]},
+        {"category": "figure", "bbox": [500, 20, 540, 60], "members": [4]},
+    ]
+    current = _row_page()
+    current["regions"] += [
+        {"category": "text", "bbox": [60, 98, 540, 172], "members": [], "text": "Net sales: EUR 4.3 billion A paragraph.", "confidence": 0.9},
+        {"category": "figure", "bbox": [500, 20, 540, 60], "members": [], "text": "", "confidence": 0.75},
+    ]
+    return legacy, current
+
+
+def test_grounding_units_sent_as_regions_are_boxes_with_their_own_words():
+    legacy, current = _unit_pages()
+    renderings = ["Net sales:", "EUR 4.3 billion", "A paragraph."]
+
+    items = project_page(current, "md", renderings).items
+
+    assert [item.value for item in items] == ["Net sales:\nEUR 4.3 billion", "A paragraph.", "Net sales: EUR 4.3 billion A paragraph.", ""]
+    assert [(item.type, item.bbox.label) for item in items[2:]] == [("text", "Text"), ("image", "Picture")]
+    assert items[3].bbox.confidence == pytest.approx(0.75)
+    old = project_page(legacy, "md", renderings + ["", ""]).items
+    assert [item.model_dump() for item in items] == [item.model_dump() for item in old], "both server generations read the same"
+
+
+def test_a_region_listing_no_element_and_no_words_is_not_a_box():
+    page = _row_page()
+    page["regions"].append({"category": "text", "bbox": [60, 98, 540, 172], "members": []})
+
+    assert len(project_page(page, "md", ["Net sales:", "EUR 4.3 billion", "A paragraph."]).items) == 2
+
+
 def test_misaligned_renderings_are_refused():
     with pytest.raises(ValueError):
         project_page(_PAGE, "md", _ELEMENT_MARKDOWN[:-1])

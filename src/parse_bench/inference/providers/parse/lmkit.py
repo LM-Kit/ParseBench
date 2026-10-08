@@ -16,9 +16,12 @@ Each document is one ``POST /lmkit/v1/document-parsing`` with ``output_format: J
 category, box and typed content) and the Markdown of the same parse for the document, each page
 and each element. A long document may answer ``202`` with a job id, which is polled.
 
-Layout: one box per grounding region (``regions`` in the response: an element, or the elements
-the parser joined into one unit, such as a label and its value on one row), labelled by its
-category; nothing else is emitted.
+Layout: one box per grounding region (``regions`` in the response: an element, the elements
+the parser joined into one unit, such as a label and its value on one row, or a grounding unit
+enclosing or splitting them, such as a list as a whole or one of its lines), labelled by its
+category; nothing else is emitted. Servers up to 2026.10.5 send the grounding units as layout-only
+elements (``repeated_text``); later servers send them as regions listing no element and carrying
+their own text and confidence. Both read the same.
 
 Config keys
 -----------
@@ -122,24 +125,44 @@ def _join_renderings(elements: list[dict[str, Any]], renderings: list[str], cate
     )
 
 
+def _rank(category: Any) -> int:
+    """Running heads first, running feet last, everything else in reading order between."""
+    return 0 if category == "header" else 2 if category == "footer" else 1
+
+
+def _box(region: dict[str, Any]) -> list[float] | None:
+    bbox = region.get("bbox")
+    return [float(v) for v in bbox] if isinstance(bbox, list) and len(bbox) == 4 else None
+
+
 def _regions(page: dict[str, Any], count: int) -> list[tuple[list[int], list[float] | None]]:
-    """The page's grounding regions: each region the parser formed, its element indices and the box
-    it occupies, then every element in no region on its own, boxed by its bounds."""
+    """The page's grounding regions over its elements: each region the parser formed, its element
+    indices and the box it occupies, then every element in no region on its own, boxed by its
+    bounds."""
     regions: list[tuple[list[int], list[float] | None]] = []
     taken: set[int] = set()
     for region in page.get("regions") or []:
         members = [m for m in region.get("members") or [] if isinstance(m, int) and 0 <= m < count and m not in taken]
         if members:
             taken.update(members)
-            bbox = region.get("bbox")
-            regions.append((members, [float(v) for v in bbox] if isinstance(bbox, list) and len(bbox) == 4 else None))
+            regions.append((members, _box(region)))
     regions.extend(([index], None) for index in range(count) if index not in taken)
     return regions
 
 
+def _units(page: dict[str, Any]) -> list[dict[str, Any]]:
+    """The page's grounding units sent as regions: a region listing no element, with its box and
+    its own text (a list as a whole, a line of a paragraph, a drawn icon reading no word)."""
+    return [
+        region
+        for region in page.get("regions") or []
+        if not region.get("members") and isinstance(region.get("text"), str) and _box(region) is not None
+    ]
+
+
 def project_page(page: dict[str, Any], page_markdown: str, element_markdown: list[str]) -> ParseLayoutPageIR:
-    """One layout page: one item per grounding region (one element, or the elements the parser
-    joined into one region), in reading order with running heads first and running feet last, its
+    """One layout page: one item per grounding region (one element, the elements the parser
+    joined into one region, or a grounding unit with its own text), in reading order with running heads first and running feet last, its
     box (the region's own when the parser gives one, else its elements' bounds) normalized by the
     page frame."""
     elements = page.get("elements") or []
@@ -150,22 +173,32 @@ def project_page(page: dict[str, Any], page_markdown: str, element_markdown: lis
     height = float(page.get("height") or 0) or 1.0
 
     def order(index: int) -> int:
-        category = elements[index].get("category")
-        return 0 if category == "header" else 2 if category == "footer" else 1
+        return _rank(elements[index].get("category"))
 
     regions = [
         ([m for m in members if len(elements[m].get("bbox") or []) == 4], bbox)
         for members, bbox in _regions(page, len(elements))
     ]
     regions = [(members, bbox) for members, bbox in regions if members]
-    regions.sort(key=lambda region: min((order(i), i) for i in region[0]))
+
+    # The units read after the page's elements, as the elements they used to be.
+    entries: list[tuple[tuple[int, int], list[int], list[float] | None, dict[str, Any] | None]] = [
+        (min((order(i), i) for i in members), members, bbox, None) for members, bbox in regions
+    ]
+    entries.extend(((_rank(unit.get("category")), len(elements) + k), [], _box(unit), unit) for k, unit in enumerate(_units(page)))
+    entries.sort(key=lambda entry: entry[0])
 
     items: list[LayoutItemIR] = []
-    for members, bbox in regions:
+    for _, members, bbox, unit in entries:
         boxes = [bbox] if bbox else [[float(v) for v in elements[m]["bbox"]] for m in members]
         left, top = min(b[0] for b in boxes), min(b[1] for b in boxes)
         right, bottom = max(b[2] for b in boxes), max(b[3] for b in boxes)
-        if len(members) == 1:
+        if unit is not None:
+            label = LABEL_MAP.get(unit.get("category") or "", "Text")
+            confidence = float(unit.get("confidence") if isinstance(unit.get("confidence"), (int, float)) else 1.0)
+            item_type = "image" if unit.get("category") == "figure" else "text"
+            value = unit.get("text") or ""
+        elif len(members) == 1:
             element = elements[members[0]]
             label = LABEL_MAP.get(element.get("category") or "", "Text")
             confidence = float(element.get("confidence", 1.0))
