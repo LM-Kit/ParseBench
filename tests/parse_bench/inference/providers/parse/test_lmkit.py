@@ -243,7 +243,13 @@ def _unit_pages() -> tuple[dict, dict]:
     ]
     current = _row_page()
     current["regions"] += [
-        {"category": "text", "bbox": [60, 98, 540, 172], "members": [], "text": "Net sales: EUR 4.3 billion A paragraph.", "confidence": 0.9},
+        {
+            "category": "text",
+            "bbox": [60, 98, 540, 172],
+            "members": [],
+            "text": "Net sales: EUR 4.3 billion A paragraph.",
+            "confidence": 0.9,
+        },
         {"category": "figure", "bbox": [500, 20, 540, 60], "members": [], "text": "", "confidence": 0.75},
     ]
     return legacy, current
@@ -255,11 +261,18 @@ def test_grounding_units_sent_as_regions_are_boxes_with_their_own_words():
 
     items = project_page(current, "md", renderings).items
 
-    assert [item.value for item in items] == ["Net sales:\nEUR 4.3 billion", "A paragraph.", "Net sales: EUR 4.3 billion A paragraph.", ""]
+    assert [item.value for item in items] == [
+        "Net sales:\nEUR 4.3 billion",
+        "A paragraph.",
+        "Net sales: EUR 4.3 billion A paragraph.",
+        "",
+    ]
     assert [(item.type, item.bbox.label) for item in items[2:]] == [("text", "Text"), ("image", "Picture")]
     assert items[3].bbox.confidence == pytest.approx(0.75)
     old = project_page(legacy, "md", renderings + ["", ""]).items
-    assert [item.model_dump() for item in items] == [item.model_dump() for item in old], "both server generations read the same"
+    assert [item.model_dump() for item in items] == [item.model_dump() for item in old], (
+        "both server generations read the same"
+    )
 
 
 def test_a_region_listing_no_element_and_no_words_is_not_a_box():

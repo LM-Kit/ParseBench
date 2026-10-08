@@ -162,9 +162,9 @@ def _units(page: dict[str, Any]) -> list[dict[str, Any]]:
 
 def project_page(page: dict[str, Any], page_markdown: str, element_markdown: list[str]) -> ParseLayoutPageIR:
     """One layout page: one item per grounding region (one element, the elements the parser
-    joined into one region, or a grounding unit with its own text), in reading order with running heads first and running feet last, its
-    box (the region's own when the parser gives one, else its elements' bounds) normalized by the
-    page frame."""
+    joined into one region, or a grounding unit with its own text), in reading order with running
+    heads first and running feet last, its box (the region's own when the parser gives one, else
+    its elements' bounds) normalized by the page frame."""
     elements = page.get("elements") or []
     if len(element_markdown) != len(elements):
         raise ValueError("element_markdown is not aligned with the page's elements")
@@ -185,7 +185,9 @@ def project_page(page: dict[str, Any], page_markdown: str, element_markdown: lis
     entries: list[tuple[tuple[int, int], list[int], list[float] | None, dict[str, Any] | None]] = [
         (min((order(i), i) for i in members), members, bbox, None) for members, bbox in regions
     ]
-    entries.extend(((_rank(unit.get("category")), len(elements) + k), [], _box(unit), unit) for k, unit in enumerate(_units(page)))
+    entries.extend(
+        ((_rank(unit.get("category")), len(elements) + k), [], _box(unit), unit) for k, unit in enumerate(_units(page))
+    )
     entries.sort(key=lambda entry: entry[0])
 
     items: list[LayoutItemIR] = []
